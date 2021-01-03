@@ -79,7 +79,7 @@ def get_descriptive_statistics(player_dict):
 @st.cache
 def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value,weight):
     fpl_problem = LpProblem('FPL',LpMaximize)
-    optimization_df = slim_elements_df[['second_name','team_name','team','total_points','position','now_cost','ict_index','form']]
+    optimization_df = slim_elements_df[['id','second_name','team_name','team','total_points','position','now_cost','ict_index','form']]
     optimization_df = optimization_df.join(pd.get_dummies(optimization_df['position']))
     players = optimization_df['second_name']
     optimization_df['now_cost'] = optimization_df['now_cost']/10
@@ -104,6 +104,9 @@ def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value,
     form_arr = form_arr/form_norm
     clean_player_form = dict(zip(optimization_df.second_name,np.array(optimization_df['form'])))
     player_form = dict(zip(optimization_df.second_name,ict_arr))
+
+    #to get player id
+    clean_player_id = dict(zip(optimization_df.second_name,np.array(optimization_df['id'])))
 
     if 'total_points' in optimization_metric:
         metric_data.append(player_points)
@@ -173,7 +176,8 @@ def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value,
                 'cost': player_cost[p],
                 'points': clean_player_points[p],
                 'ict_index':clean_player_ict[p],
-                'form':clean_player_form[p]
+                'form':clean_player_form[p],
+                'id':clean_player_id[p]
             })
 
     solution_info = {
@@ -234,7 +238,7 @@ st.header('Descriptive statistics')
 st.write('This is based solely on current team selection')
 st.subheader('Overall Team Expectation (adjusted with bench mean and var removed)')
 st.write('Expected points per week:',mean)
-st.write('Standard Deviation per week',std)
+st.write('Standard deviation per week',std)
 st.subheader('Statistics on individual player on team')
 player = st.selectbox('Which player?',list(descriptive_df['name']))
 player_id = player_dict[player]
@@ -279,9 +283,22 @@ if optimization_check:
         list_of_different_players = list(optimal_squad[~optimal_squad['name'].isin(team_df['name'])]['name'])
         st.write('Players you are lacking:',', '.join(list_of_different_players))
         st.write('Number of transfers to create ideal team:',len(list_of_different_players))
-        difference = float(solution_info['total_points'])-float(overall_points)
-        st.write('Total Points of Optimal Team:',solution_info['total_points'], '(Difference in points:',difference,')')
-        st.write('Total Cost of Optimal Team:',solution_info['total_cost'])
+        difference_in_points = float(solution_info['total_points'])-float(overall_points)
+        difference_in_value = float(solution_info['total_cost']) - float(current_team_value)
+        st.subheader('Comparison Metrics (positive number translates into optimal team being better)')
+        st.write('Total points of optimal team:',solution_info['total_points'], '(Difference in points:',difference_in_points,')')
+        st.write('Total cost of optimal team:',solution_info['total_cost'], '(Difference in value:',difference_in_value,')')
+
+        optimal_team_dict = optimal_squad[['id','name']]
+        optimal_team_dict = optimal_team_dict.set_index('name')
+        optimal_team_dict = optimal_team_dict['id'].to_dict()
+
+        optimal_mean,optimal_std = get_descriptive_statistics(optimal_team_dict)
+
+        difference_in_mean = float(optimal_mean) - float(mean)
+        difference_in_std = float(optimal_std) - float(std)
+        st.write('Expected points per week of optimal team:',round(optimal_mean,3), '(Difference in mean:',round(difference_in_mean,3),')')
+        st.write('Standard deviation of optimal team:',round(optimal_std,3), '(Difference in std:',round(difference_in_std,3),')')
 
 ##### ---- GENERIC DATA ---------
 st.header('Team Analysis')
