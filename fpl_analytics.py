@@ -264,7 +264,7 @@ weight = {}
 st.write('Specify weights for optimization, with sum = 1 (this is optional)')
 cols = st.beta_columns(len(metrics))
 for i in range(len(cols)):
-    weight[metrics[i]] = cols[i].number_input('{} weight:'.format(metrics[i]),value=1/3)
+    weight[metrics[i]] = cols[i].number_input('{} weight:'.format(metrics[i]),value=1/len(metrics))
 
 st.write('Total Weightage:',sum(weight.values()))
 ### ----- FUNC RUN -------
