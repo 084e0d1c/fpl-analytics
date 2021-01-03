@@ -25,6 +25,7 @@ def load_data():
     slim_elements_df['value'] = slim_elements_df.value_season.astype(float)
     slim_elements_df['total_points'] = slim_elements_df.total_points.astype(float)
     slim_elements_df['ict_index'] = slim_elements_df.ict_index.astype(float)
+    slim_elements_df['form'] = slim_elements_df.form.astype(float)
     slim_elements_df.sort_values('value',ascending=False,inplace=True)
     return slim_elements_df,elements_df
 
@@ -74,7 +75,6 @@ def get_descriptive_statistics(player_dict):
     for m in mean:
         var += stats[m]
     return sum(mean),var ** (1/2)
-
 
 def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value):
     fpl_problem = LpProblem('FPL',LpMaximize)
