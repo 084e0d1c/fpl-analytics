@@ -208,6 +208,14 @@ fig = ff.create_distplot(
 st.write('Home vs Away Distribution for {}'.format(player))
 st.plotly_chart(fig,use_container_width=True)
 
+
+st.header('Wildcard optimization')
+metrics = st.multiselect('Pick metrics to optimize on:', ['ict_index','total_points','form'])
+st.write('You have chosen to optimize team based on: {}'.format(', '.join(metrics)))
+st.write('Optimization will be done based on current team value of: {}'.format(current_team_value))
+
+optimization_check = st.button('Run Optimization')
+
 st.header('Team Analysis')
 st.subheader('Transfer History')
 transfer_data = requests.get(transfer_url).json()
@@ -216,13 +224,6 @@ st.write(transfer_history_df)
 
 st.subheader('Current Team Data')
 st.write(team_df)
-
-st.subheader('Wildcard optimization')
-metrics = st.multiselect('Pick metrics to optimize on:', ['ict_index','total_points','form'])
-st.write('You have chosen to optimize team based on: {}'.format(', '.join(metrics)))
-st.write('Optimization will be done based on current team value of: {}'.format(current_team_value))
-
-optimization_check = st.button('Run Optimization')
 
 if optimization_check:
     if len(metrics) == 0:
