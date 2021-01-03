@@ -215,6 +215,19 @@ st.write('You have chosen to optimize team based on: {}'.format(', '.join(metric
 st.write('Optimization will be done based on current team value of: {}'.format(current_team_value))
 
 optimization_check = st.button('Run Optimization')
+if optimization_check:
+    if len(metrics) == 0:
+        st.write('Please select at least 1 metric.')
+    else:
+        optimal_squad,solution_info = wildcard_suggestion(main_df,metrics,current_team_value)
+        st.subheader('Ideal Team')
+        st.write(optimal_squad)
+        list_of_different_players = list(optimal_squad[~optimal_squad['name'].isin(team_df['name'])]['name'])
+        st.write('Players you are lacking:',', '.join(list_of_different_players))
+        st.write('Number of transfers to create ideal team:',len(list_of_different_players))
+        difference = float(solution_info['total_points'])-float(overall_points)
+        st.write('Total Points of Optimal Team:',solution_info['total_points'], '(Difference in points:',difference,')')
+        st.write('Total Cost of Optimal Team:',solution_info['total_cost'])
 
 st.header('Team Analysis')
 st.subheader('Transfer History')
@@ -225,18 +238,6 @@ st.write(transfer_history_df)
 st.subheader('Current Team Data')
 st.write(team_df)
 
-if optimization_check:
-    if len(metrics) == 0:
-        st.write('Please select at least 1 metric.')
-    else:
-        optimal_squad,solution_info = wildcard_suggestion(main_df,metrics,current_team_value)
-        st.write(optimal_squad)
-        list_of_different_players = list(optimal_squad[~optimal_squad['name'].isin(team_df['name'])]['name'])
-        st.write('Players you are lacking:',', '.join(list_of_different_players))
-        st.write('Number of transfers to create ideal team:',len(list_of_different_players))
-        difference = float(solution_info['total_points'])-float(overall_points)
-        st.write('Total Points of Optimal Team:',solution_info['total_points'], '(Difference in points:',difference,')')
-        st.write('Total Cost of Optimal Team:',solution_info['total_cost'])
 
 st.header('Top Performers in each position that are not in your team')
 top_100_df = main_df
