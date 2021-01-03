@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.figure_factory as ff
+from pulp import LpMaximize,LpProblem,LpStatus,lpSum,LpVariable,LpInteger
 
 st.set_page_config(
     page_title='FPL Analytics',
@@ -20,7 +21,7 @@ def load_data():
     teams_df = pd.DataFrame(json['teams'])
     slim_elements_df = elements_df[['id','second_name','team','element_type','selected_by_percent','now_cost','value_season','total_points','form','ict_index','dreamteam_count','in_dreamteam']]
     slim_elements_df['position'] = slim_elements_df.element_type.map(elements_types_df.set_index('id').singular_name)
-    slim_elements_df['team'] = slim_elements_df.team.map(teams_df.set_index('id').name)
+    slim_elements_df['team_name'] = slim_elements_df.team.map(teams_df.set_index('id').name)
     slim_elements_df['value'] = slim_elements_df.value_season.astype(float)
     slim_elements_df['total_points'] = slim_elements_df.total_points.astype(float)
     slim_elements_df['ict_index'] = slim_elements_df.ict_index.astype(float)
@@ -73,7 +74,71 @@ def get_descriptive_statistics(player_dict):
     for m in mean:
         var += stats[m]
     return sum(mean),var ** (1/2)
-    
+
+@st.cache
+def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value):
+    fpl_problem = LpProblem('FPL',LpMaximize)
+    optimization_df = slim_elements_df[['second_name','team_name','team','total_points','position','now_cost','ict_index','form']]
+    optimization_df = optimization_df.join(pd.get_dummies(optimization_df['position']))
+    players = optimization_df['second_name']
+    optimization_df['now_cost'] = optimization_df['now_cost']/10
+    x = LpVariable.dict('x_ % s',players,lowBound=0,upBound=1,cat=LpInteger)
+
+    for m in optimization_metric:
+        player_points = dict(zip(optimization_df.second_name,np.array(optimization_df[m])))
+        fpl_problem += sum(player_points[i] * x[i] for i in players)
+
+    position_names = ['Goalkeeper','Defender','Midfielder','Forward']
+    position_constraints = [2,5,5,3]
+    constraints = dict(zip(position_names,position_constraints))
+    constraints['total_cost'] = float(current_team_value)
+    constraints['team'] = 3
+
+    player_cost = dict(zip(optimization_df.second_name, optimization_df.now_cost))
+    player_position = dict(zip(optimization_df.second_name, optimization_df.position))
+    player_gk = dict(zip(optimization_df.second_name, optimization_df.Goalkeeper))
+    player_def = dict(zip(optimization_df.second_name, optimization_df.Defender))
+    player_mid = dict(zip(optimization_df.second_name, optimization_df.Midfielder))
+    player_fwd = dict(zip(optimization_df.second_name, optimization_df.Forward))
+
+    fpl_problem += sum([player_cost[i] * x[i] for i in players]) <= float(constraints['total_cost'])
+    fpl_problem += sum([player_gk[i] * x[i] for i in players]) == constraints['Goalkeeper']
+    fpl_problem += sum([player_def[i] * x[i] for i in players]) == constraints['Defender']
+    fpl_problem += sum([player_mid[i] * x[i] for i in players]) == constraints['Midfielder']
+    fpl_problem += sum([player_fwd[i] * x[i] for i in players]) == constraints['Forward']
+
+    for t in optimization_df.team.unique():
+        optimization_df['team_'+str(t).lower()] = np.where(optimization_df.team == t, int(1),int(0))
+
+    for t in optimization_df.team:
+        player_team = dict(zip(optimization_df.second_name,optimization_df['team_'+str(t)]))
+        fpl_problem += sum([player_team[i] * x[i] for i in players]) <= constraints['team']
+
+    fpl_problem.solve()
+
+    total_points = 0.
+    total_cost = 0.
+    optimal_squad = []
+    for p in players:
+        if x[p].value() != 0:
+            total_points += player_points[p]
+            total_cost += player_cost[p]
+
+            optimal_squad.append({
+                'name': p,
+                'position': player_position[p],
+                'cost': player_cost[p],
+                'points': player_points[p]
+            })
+
+    solution_info = {
+        'total_points': total_points,
+        'total_cost': total_cost
+    }
+    optimal_squad_df = pd.DataFrame(optimal_squad)
+    optimal_squad_df.sort_values('position',inplace=True)
+    return optimal_squad_df,solution_info
+
 st.title('FPL Team Insights')
 st.write('Analyse your team - [How to find my team id?](https://www.reddit.com/r/FantasyPL/comments/4tki9s/fpl_id/) ')
 st.write("While you find it, here's Magnus Carlsen's team!")
@@ -89,16 +154,20 @@ try:
         
 except:
     current_game_week = manager_data['current_event']
+    current_team_value = manager_data['last_deadline_value']/10
+    overall_points = manager_data['summary_overall_points']
     manager_details_df = pd.DataFrame.from_dict({
         'id':manager_data['id'],
         'name':manager_data['player_first_name'] + ' ' + manager_data['player_last_name'],
         'region':manager_data['player_region_name'],
-        'overall points':manager_data['summary_overall_points'],
+        'overall points':overall_points,
         'overall rank':manager_data['summary_overall_rank'],
-        'current gameweek':current_game_week
+        'current gameweek':current_game_week,
+        'current team value': current_team_value
+
     },orient='index',columns=['Manager Data'])
     st.write(manager_details_df)
-    valid_team_id = True
+
     #endpoints for team data
     transfer_url = 'https://fantasy.premierleague.com/api/entry/{}/transfers/'.format(team_id)
     picks_url = 'https://fantasy.premierleague.com/api/entry/{}/event/{}/picks/'.format(team_id,current_game_week)
@@ -147,7 +216,27 @@ st.write(transfer_history_df)
 st.subheader('Current Team Data')
 st.write(team_df)
 
-st.subheader('Potential Transfer Ideas')
+st.subheader('Wildcard optimization')
+metrics = st.multiselect('Pick metrics to optimize on:', ['ict_index','total_points','form'])
+st.write('You have chosen to optimize team based on: {}'.format(', '.join(metrics)))
+st.write('Optimization will be done based on current team value of: {}'.format(current_team_value))
+
+optimization_check = st.button('Run Optimization')
+
+if optimization_check:
+    if len(metrics) == 0:
+        st.write('Please select at least 1 metric.')
+    else:
+        optimal_squad,solution_info = wildcard_suggestion(main_df,metrics,current_team_value)
+        st.write(optimal_squad)
+        list_of_different_players = list(optimal_squad[~optimal_squad['name'].isin(team_df['name'])]['name'])
+        st.write('Players you are lacking:',', '.join(list_of_different_players))
+        st.write('Number of transfers to create ideal team:',len(list_of_different_players))
+        difference = float(solution_info['total_points'])-float(overall_points)
+        st.write('Total Points of Optimal Team:',solution_info['total_points'], '(Difference in points:',difference,')')
+        st.write('Total Cost of Optimal Team:',solution_info['total_cost'])
+
+st.header('Top Performers in each position that are not in your team')
 top_100_df = main_df
 recommendation_df = top_100_df[~top_100_df['second_name'].isin(team_df['name'])]
 recommendation_df = recommendation_df[['team','second_name','position','selected_by_percent','now_cost','value','form','ict_index','dreamteam_count','in_dreamteam']]
@@ -155,19 +244,19 @@ recommendation_df.columns = ['team','name','position','selected by (%)','cost','
 recommendation_df['cost'] = recommendation_df['cost']/10
 
 st.write('Goalkeepers')
-goalkeeper_df = recommendation_df[recommendation_df['position'] == 'Goalkeeper'].head(10)
+goalkeeper_df = recommendation_df[recommendation_df['position'] == 'Goalkeeper'].head(5)
 st.write(goalkeeper_df)
 
 st.write('Defenders')
-defender_df = recommendation_df[recommendation_df['position'] == 'Defender'].head(10)
+defender_df = recommendation_df[recommendation_df['position'] == 'Defender'].head(5)
 st.write(defender_df)
 
 st.write('Midfielders')
-midfielder_df = recommendation_df[recommendation_df['position'] == 'Midfielder'].head(10)
+midfielder_df = recommendation_df[recommendation_df['position'] == 'Midfielder'].head(5)
 st.write(midfielder_df)
 
 st.write('Forwards')
-forward_df = recommendation_df[recommendation_df['position'] == 'Forward'].head(10)
+forward_df = recommendation_df[recommendation_df['position'] == 'Forward'].head(5)
 st.write(forward_df)
 
 st.title('General FPL Statistics')
@@ -203,5 +292,6 @@ plotly_df = general_df[general_df['total_points'] > 50]
 fig = px.scatter(plotly_df,x='selected_by_percent',y='total_points',text='second_name',size='ict_index')
 fig.update_traces(textposition='top center')
 st.plotly_chart(fig)
+
 
 
