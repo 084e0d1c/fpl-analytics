@@ -75,7 +75,7 @@ def get_descriptive_statistics(player_dict):
         var += stats[m]
     return sum(mean),var ** (1/2)
 
-@st.cache
+
 def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value):
     fpl_problem = LpProblem('FPL',LpMaximize)
     optimization_df = slim_elements_df[['second_name','team_name','team','total_points','position','now_cost','ict_index','form']]
@@ -238,7 +238,6 @@ st.write(transfer_history_df)
 st.subheader('Current Team Data')
 st.write(team_df)
 
-
 st.header('Top Performers in each position that are not in your team')
 top_100_df = main_df
 recommendation_df = top_100_df[~top_100_df['second_name'].isin(team_df['name'])]
@@ -296,5 +295,6 @@ fig = px.scatter(plotly_df,x='selected_by_percent',y='total_points',text='second
 fig.update_traces(textposition='top center')
 st.plotly_chart(fig)
 
-
+st.header('More Information')
+st.write("I build this out of a desire to perform better in FPL. If you have any feature request, please direct them to my github repository, or you could drop me an email. My email can be found in my portfolio URL. Cheers.")
 
