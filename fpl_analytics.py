@@ -140,6 +140,7 @@ def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value)
     return optimal_squad_df,solution_info
 
 st.title('FPL Team Insights')
+st.subheader('Created by: Brandon Tan [Portfolio URL](https://brandontjd.github.io)')
 st.write('Analyse your team - [How to find my team id?](https://www.reddit.com/r/FantasyPL/comments/4tki9s/fpl_id/) ')
 st.write("While you find it, here's Magnus Carlsen's team!")
 team_id = st.text_input('Enter your team id:',value='76862')
