@@ -76,7 +76,8 @@ def get_descriptive_statistics(player_dict):
         var += stats[m]
     return sum(mean),var ** (1/2)
 
-def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value):
+@st.cache
+def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value,weight):
     fpl_problem = LpProblem('FPL',LpMaximize)
     optimization_df = slim_elements_df[['second_name','team_name','team','total_points','position','now_cost','ict_index','form']]
     optimization_df = optimization_df.join(pd.get_dummies(optimization_df['position']))
@@ -84,9 +85,51 @@ def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value)
     optimization_df['now_cost'] = optimization_df['now_cost']/10
     x = LpVariable.dict('x_ % s',players,lowBound=0,upBound=1,cat=LpInteger)
 
-    for m in optimization_metric:
-        player_points = dict(zip(optimization_df.second_name,np.array(optimization_df[m])))
-        fpl_problem += sum(player_points[i] * x[i] for i in players)
+    metric_data = []
+
+    point_arr = np.array(optimization_df['total_points'])
+    point_norm = np.linalg.norm(point_arr)
+    point_arr = point_arr/point_norm
+    clean_player_points = dict(zip(optimization_df.second_name,np.array(optimization_df['total_points'])))
+    player_points = dict(zip(optimization_df.second_name,point_arr))
+    
+    ict_arr = np.array(optimization_df['total_points'])
+    ict_norm = np.linalg.norm(ict_arr)
+    ict_arr = ict_arr/ict_norm
+    clean_player_ict = dict(zip(optimization_df.second_name,np.array(optimization_df['ict_index'])))
+    player_ict = dict(zip(optimization_df.second_name,ict_arr))
+
+    form_arr = np.array(optimization_df['form'])
+    form_norm = np.linalg.norm(form_arr)
+    form_arr = form_arr/form_norm
+    clean_player_form = dict(zip(optimization_df.second_name,np.array(optimization_df['form'])))
+    player_form = dict(zip(optimization_df.second_name,ict_arr))
+
+    if 'total_points' in optimization_metric:
+        metric_data.append(player_points)
+    
+    if 'ict_index' in optimization_metric:
+        metric_data.append(player_ict)
+
+    if 'form' in optimization_metric:
+        metric_data.append(player_form)
+
+    final_data = {}
+    for i in range(len(metric_data)):
+        if i == 0:
+            m = 'total_points'
+        elif i == 1:
+            m = 'ict_index'
+        else:
+            m = 'form'
+        d = metric_data[i]
+        for player in d:
+            if player in final_data:
+                final_data[player] += weight[m]*d[player]
+            else:
+                final_data[player] = weight[m]*d[player]
+
+    fpl_problem += sum(final_data[i] * x[i] for i in players)
 
     position_names = ['Goalkeeper','Defender','Midfielder','Forward']
     position_constraints = [2,5,5,3]
@@ -121,14 +164,16 @@ def wildcard_suggestion(slim_elements_df,optimization_metric,current_team_value)
     optimal_squad = []
     for p in players:
         if x[p].value() != 0:
-            total_points += player_points[p]
+            total_points += clean_player_points[p]
             total_cost += player_cost[p]
 
             optimal_squad.append({
                 'name': p,
                 'position': player_position[p],
                 'cost': player_cost[p],
-                'points': player_points[p]
+                'points': clean_player_points[p],
+                'ict_index':clean_player_ict[p],
+                'form':clean_player_form[p]
             })
 
     solution_info = {
@@ -209,17 +254,26 @@ st.write('Home vs Away Distribution for {}'.format(player))
 st.plotly_chart(fig,use_container_width=True)
 
 
+##### ---- OPTIMIZER ---------
 st.header('Wildcard optimization')
-metrics = st.multiselect('Pick metrics to optimize on:', ['ict_index','total_points','form'])
+metrics = st.multiselect('Pick metrics to optimize on:', ['ict_index','total_points','form'],default=['total_points'])
 st.write('You have chosen to optimize team based on: {}'.format(', '.join(metrics)))
-st.write('Optimization will be done based on current team value of: {}'.format(current_team_value))
+st.write('Optimization will be done based on current team value of:',current_team_value)
+weight = {}
 
+st.write('Specify weights for optimization, with sum = 1 (this is optional)')
+cols = st.beta_columns(len(metrics))
+for i in range(len(cols)):
+    weight[metrics[i]] = cols[i].number_input('{} weight:'.format(metrics[i]),value=1/3)
+
+st.write('Total Weightage:',sum(weight.values()))
+### ----- FUNC RUN -------
 optimization_check = st.button('Run Optimization')
 if optimization_check:
     if len(metrics) == 0:
         st.write('Please select at least 1 metric.')
     else:
-        optimal_squad,solution_info = wildcard_suggestion(main_df,metrics,current_team_value)
+        optimal_squad,solution_info = wildcard_suggestion(main_df,metrics,current_team_value,weight)
         st.subheader('Ideal Team')
         st.write(optimal_squad)
         list_of_different_players = list(optimal_squad[~optimal_squad['name'].isin(team_df['name'])]['name'])
@@ -229,6 +283,7 @@ if optimization_check:
         st.write('Total Points of Optimal Team:',solution_info['total_points'], '(Difference in points:',difference,')')
         st.write('Total Cost of Optimal Team:',solution_info['total_cost'])
 
+##### ---- GENERIC DATA ---------
 st.header('Team Analysis')
 st.subheader('Transfer History')
 transfer_data = requests.get(transfer_url).json()
