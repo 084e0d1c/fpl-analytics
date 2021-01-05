@@ -46,9 +46,9 @@ def format_current_team_df(current_team_data,slim_elements_df,elements_df):
     team_df = pd.DataFrame(current_team_data)
     team_df['second_name'] = team_df.element.map(elements_df.set_index('id').second_name)
     team_df = team_df.merge(slim_elements_df,how='left',on='second_name')
-    team_df = team_df[['element','team','second_name','position_y','selected_by_percent','now_cost','value','form','ict_index','dreamteam_count','in_dreamteam']]
+    team_df = team_df[['element','team_name','second_name','position_y','selected_by_percent','now_cost','value','form','ict_index','dreamteam_count','in_dreamteam']]
     team_df['now_cost'] = team_df['now_cost'] / 10
-    team_df.columns = ['id','team','name','position','selected by (%)','cost','value','form','ict score','dreamteam appearances','in dreamteam']
+    team_df.columns = ['id','team_name','name','position','selected by (%)','cost','value','form','ict score','dreamteam appearances','in dreamteam']
     team_df.sort_values('value',ascending=False,inplace=True)
     return team_df
 
@@ -313,8 +313,8 @@ st.write(team_df)
 st.header('Top Performers in each position that are not in your team')
 top_100_df = main_df
 recommendation_df = top_100_df[~top_100_df['second_name'].isin(team_df['name'])]
-recommendation_df = recommendation_df[['team','second_name','position','selected_by_percent','now_cost','value','form','ict_index','dreamteam_count','in_dreamteam']]
-recommendation_df.columns = ['team','name','position','selected by (%)','cost','value','form','ict score','dreamteam appearances','in dreamteam']
+recommendation_df = recommendation_df[['team_name','second_name','position','selected_by_percent','now_cost','value','form','ict_index','dreamteam_count','in_dreamteam']]
+recommendation_df.columns = ['team_name','name','position','selected by (%)','cost','value','form','ict score','dreamteam appearances','in dreamteam']
 recommendation_df['cost'] = recommendation_df['cost']/10
 
 st.write('Goalkeepers')
@@ -345,9 +345,9 @@ st.subheader('Average value by position')
 st.write(pivot)
 
 st.subheader('Average statistics by team')
-team_pivot = general_df.pivot_table(index='team',values=['value','total_points','ict_index'],aggfunc=np.mean).reset_index()
+team_pivot = general_df.pivot_table(index='team_name',values=['value','total_points','ict_index'],aggfunc=np.mean).reset_index()
 team_pivot.sort_values('ict_index',ascending=False,inplace=True)
-team_pivot.columns = ['team','average ict index','average points','average value']
+team_pivot.columns = ['team_name','average ict index','average points','average value']
 st.write(team_pivot)
 
 st.write('Total Points vs. Cost')
